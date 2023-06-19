@@ -17,7 +17,7 @@ import src.settings as s
 
 dataset_path = "./APP_DATA/archive"
 # items_folder = "data"
-batch_size = 30
+batch_size = 100
 images_ext = ".jpg"
 anns_ext = ".txt"
 
@@ -164,28 +164,31 @@ def convert_and_upload_supervisely_project(
     api.project.update_meta(project.id, meta.to_json())
 
     for ds_name in ["train", "test"]:
-        images_names = get_img_basenames(os.path.join(dataset_path, ds_name))
+        # images_names = get_img_basenames(os.path.join(dataset_path, ds_name))
+        dataset = api.dataset.create(project.id, ds_name, change_name_if_conflict=True)
 
-        progress = sly.Progress("Create dataset {}".format(ds_name), len(images_names))
+        curr_path = os.path.join(dataset_path, ds_name)
+        images_paths = [
+            f
+            for f in sly.fs.list_files_recursively(curr_path)
+            if sly.fs.get_file_ext(f) == images_ext
+        ]
 
-        for cls_name in os.listdir(os.path.join(dataset_path, ds_name)):
-            dataset = api.dataset.create(project.id, ds_name, change_name_if_conflict=True)
+        progress = sly.Progress("Create dataset {}".format(ds_name), len(images_paths))
 
-            for img_names_batch in sly.batched(images_names, batch_size=batch_size):
-                img_pathes_batch = [
-                    os.path.join(dataset_path, ds_name, cls_name, im_name + images_ext)
-                    for im_name in img_names_batch
-                ]
+        for img_pathes_batch in sly.batched(images_paths, batch_size=batch_size):
+            img_names_batch = [get_file_name(f) for f in img_pathes_batch]
 
-                img_infos = api.image.upload_paths(dataset.id, img_names_batch, img_pathes_batch)
-                img_ids = [im_info.id for im_info in img_infos]
+            img_infos = api.image.upload_paths(dataset.id, img_names_batch, img_pathes_batch)
+            cls_names = [os.path.basename(os.path.dirname(f)) for f in img_pathes_batch]
+            img_ids = [im_info.id for im_info in img_infos]
 
-                anns = [
-                    create_ann(image_path, ds_name, cls_name, cls_to_obj_classes)
-                    for image_path in img_pathes_batch
-                ]
-                api.annotation.upload_anns(img_ids, anns)
+            anns = [
+                create_ann(image_path, ds_name, cls_name, cls_to_obj_classes)
+                for image_path, cls_name in zip(img_pathes_batch, cls_names)
+            ]
+            api.annotation.upload_anns(img_ids, anns)
 
-                progress.iters_done_report(len(img_names_batch))
+            progress.iters_done_report(len(img_pathes_batch))
 
     return project
