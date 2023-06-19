@@ -40,6 +40,10 @@ def create_ann(image_path, ds_name, cls_name, cls_to_obj_classes):
             for curr_data in content:
                 if len(curr_data) != 0:
                     line = curr_data.split(" ")
+                    if len(line) != 5:
+                        line[0] = line[0] + " " + line.pop(1)
+                        if len(line) != 5:
+                            line[0] = line[0] + " " + line.pop(1)
                     obj_class = cls_to_obj_classes[line.pop(0)]
 
                     curr_data = list(map(float, line))
